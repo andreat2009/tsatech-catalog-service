@@ -24,7 +24,7 @@ env:
   KAFKA_SECURITY_PROTOCOL: "PLAINTEXT"
 
 secret:
-  name: "catalog-serviceSecret"
+  name: "catalog-service-secret"
   create: false
   data: {}
   # data example:
