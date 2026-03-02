@@ -3,11 +3,15 @@ package com.newproject.catalog.service;
 import com.newproject.catalog.domain.Category;
 import com.newproject.catalog.dto.CategoryRequest;
 import com.newproject.catalog.dto.CategoryResponse;
+import com.newproject.catalog.dto.CategoryTreeResponse;
 import com.newproject.catalog.events.CatalogEventPublisher;
 import com.newproject.catalog.exception.BadRequestException;
 import com.newproject.catalog.exception.NotFoundException;
 import com.newproject.catalog.repository.CategoryRepository;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,10 +53,56 @@ public class CategoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<CategoryResponse> list() {
-        return categoryRepository.findAll().stream()
+    public List<CategoryResponse> list(Boolean active) {
+        List<Category> categories = active != null
+            ? categoryRepository.findByActiveOrderBySortOrderAscNameAsc(active)
+            : categoryRepository.findAll();
+
+        if (active == null) {
+            categories.sort(Comparator.comparing(Category::getSortOrder).thenComparing(Category::getName));
+        }
+
+        return categories.stream()
             .map(this::toResponse)
             .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CategoryTreeResponse> tree(Boolean active) {
+        List<Category> categories = active != null
+            ? categoryRepository.findByActiveOrderBySortOrderAscNameAsc(active)
+            : categoryRepository.findAll();
+
+        categories.sort(Comparator.comparing(Category::getSortOrder).thenComparing(Category::getName));
+
+        Map<Long, CategoryTreeResponse> nodes = new HashMap<>();
+        for (Category category : categories) {
+            CategoryTreeResponse node = new CategoryTreeResponse();
+            node.setId(category.getId());
+            node.setName(category.getName());
+            node.setDescription(category.getDescription());
+            node.setSortOrder(category.getSortOrder());
+            nodes.put(category.getId(), node);
+        }
+
+        List<CategoryTreeResponse> roots = categories.stream()
+            .filter(category -> category.getParent() == null || !nodes.containsKey(category.getParent().getId()))
+            .map(category -> nodes.get(category.getId()))
+            .collect(Collectors.toList());
+
+        for (Category category : categories) {
+            if (category.getParent() == null) {
+                continue;
+            }
+            CategoryTreeResponse parent = nodes.get(category.getParent().getId());
+            CategoryTreeResponse child = nodes.get(category.getId());
+            if (parent != null && child != null) {
+                parent.getChildren().add(child);
+            }
+        }
+
+        sortTree(roots);
+        return roots;
     }
 
     @Transactional
@@ -78,6 +128,13 @@ public class CategoryService {
             category.setParent(parent);
         } else {
             category.setParent(null);
+        }
+    }
+
+    private void sortTree(List<CategoryTreeResponse> nodes) {
+        nodes.sort(Comparator.comparing(CategoryTreeResponse::getSortOrder).thenComparing(CategoryTreeResponse::getName));
+        for (CategoryTreeResponse node : nodes) {
+            sortTree(node.getChildren());
         }
     }
 

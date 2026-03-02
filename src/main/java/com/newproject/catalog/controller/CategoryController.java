@@ -2,6 +2,7 @@ package com.newproject.catalog.controller;
 
 import com.newproject.catalog.dto.CategoryRequest;
 import com.newproject.catalog.dto.CategoryResponse;
+import com.newproject.catalog.dto.CategoryTreeResponse;
 import com.newproject.catalog.service.CategoryService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -18,8 +19,13 @@ public class CategoryController {
     }
 
     @GetMapping
-    public List<CategoryResponse> list() {
-        return categoryService.list();
+    public List<CategoryResponse> list(@RequestParam(required = false) Boolean active) {
+        return categoryService.list(active);
+    }
+
+    @GetMapping("/tree")
+    public List<CategoryTreeResponse> tree(@RequestParam(required = false) Boolean active) {
+        return categoryService.tree(active);
     }
 
     @GetMapping("/{id}")

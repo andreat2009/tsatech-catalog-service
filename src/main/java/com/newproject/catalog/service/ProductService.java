@@ -11,9 +11,12 @@ import com.newproject.catalog.exception.NotFoundException;
 import com.newproject.catalog.repository.CategoryRepository;
 import com.newproject.catalog.repository.ManufacturerRepository;
 import com.newproject.catalog.repository.ProductRepository;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -63,7 +66,9 @@ public class ProductService {
         if (request.getSku() != null) {
             productRepository.findBySku(request.getSku())
                 .filter(existing -> !existing.getId().equals(id))
-                .ifPresent(existing -> { throw new BadRequestException("SKU already exists"); });
+                .ifPresent(existing -> {
+                    throw new BadRequestException("SKU already exists");
+                });
         }
 
         applyRequest(product, request);
@@ -83,7 +88,53 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<ProductResponse> list() {
-        return productRepository.findAll().stream()
+        return list(null, null, null, null, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductResponse> list(
+        String query,
+        Long categoryId,
+        Boolean active,
+        BigDecimal minPrice,
+        BigDecimal maxPrice,
+        String sort
+    ) {
+        List<Product> products = active != null
+            ? productRepository.findByActive(active)
+            : productRepository.findAll();
+
+        String normalizedQuery = query != null ? query.trim().toLowerCase(Locale.ROOT) : null;
+        if (normalizedQuery != null && !normalizedQuery.isEmpty()) {
+            products = products.stream()
+                .filter(product -> contains(product.getSku(), normalizedQuery)
+                    || contains(product.getModel(), normalizedQuery)
+                    || contains(product.getName(), normalizedQuery)
+                    || contains(product.getDescription(), normalizedQuery))
+                .collect(Collectors.toList());
+        }
+
+        if (categoryId != null) {
+            products = products.stream()
+                .filter(product -> product.getCategories().stream().anyMatch(category -> categoryId.equals(category.getId())))
+                .collect(Collectors.toList());
+        }
+
+        if (minPrice != null) {
+            products = products.stream()
+                .filter(product -> product.getPrice() != null && product.getPrice().compareTo(minPrice) >= 0)
+                .collect(Collectors.toList());
+        }
+
+        if (maxPrice != null) {
+            products = products.stream()
+                .filter(product -> product.getPrice() != null && product.getPrice().compareTo(maxPrice) <= 0)
+                .collect(Collectors.toList());
+        }
+
+        products.sort(resolveComparator(sort));
+
+        return products.stream()
             .map(this::toResponse)
             .collect(Collectors.toList());
     }
@@ -94,6 +145,29 @@ public class ProductService {
             .orElseThrow(() -> new NotFoundException("Product not found"));
         productRepository.delete(product);
         eventPublisher.publish("PRODUCT_DELETED", "product", id.toString(), null);
+    }
+
+    private Comparator<Product> resolveComparator(String sort) {
+        String normalizedSort = sort != null ? sort.toLowerCase(Locale.ROOT) : "";
+
+        return switch (normalizedSort) {
+            case "name_desc" -> Comparator.comparing(Product::getName, String.CASE_INSENSITIVE_ORDER)
+                .reversed()
+                .thenComparing(Product::getId);
+            case "price_asc" -> Comparator.comparing(Product::getPrice, Comparator.nullsLast(BigDecimal::compareTo))
+                .thenComparing(Product::getId);
+            case "price_desc" -> Comparator.comparing(Product::getPrice, Comparator.nullsLast(BigDecimal::compareTo))
+                .reversed()
+                .thenComparing(Product::getId);
+            case "newest" -> Comparator.comparing(Product::getId, Comparator.nullsLast(Long::compareTo)).reversed();
+            case "name_asc" -> Comparator.comparing(Product::getName, String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(Product::getId);
+            default -> Comparator.comparing(Product::getId, Comparator.nullsLast(Long::compareTo));
+        };
+    }
+
+    private boolean contains(String value, String query) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(query);
     }
 
     private void applyRequest(Product product, ProductRequest request) {

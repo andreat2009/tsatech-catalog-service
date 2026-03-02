@@ -4,6 +4,7 @@ import com.newproject.catalog.dto.ProductRequest;
 import com.newproject.catalog.dto.ProductResponse;
 import com.newproject.catalog.service.ProductService;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -18,8 +19,15 @@ public class ProductController {
     }
 
     @GetMapping
-    public List<ProductResponse> list() {
-        return productService.list();
+    public List<ProductResponse> list(
+        @RequestParam(required = false) String q,
+        @RequestParam(required = false) Long categoryId,
+        @RequestParam(required = false) Boolean active,
+        @RequestParam(required = false) BigDecimal minPrice,
+        @RequestParam(required = false) BigDecimal maxPrice,
+        @RequestParam(required = false) String sort
+    ) {
+        return productService.list(q, categoryId, active, minPrice, maxPrice, sort);
     }
 
     @GetMapping("/{id}")
