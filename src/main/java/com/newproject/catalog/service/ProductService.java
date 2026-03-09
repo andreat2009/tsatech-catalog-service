@@ -221,7 +221,7 @@ public class ProductService {
         response.setQuantity(product.getQuantity());
         response.setActive(product.getActive());
 
-        String coverUrl = coverImage != null ? coverImage.getUrl() : product.getImage();
+        String coverUrl = resolveDisplayImageUrl(coverImage, product.getImage());
         response.setImage(coverUrl);
         response.setCoverImageUrl(coverUrl);
         response.setGalleryImages(productImageService.resolveGalleryImages(product.getId()));
@@ -231,5 +231,21 @@ public class ProductService {
         response.setCreatedAt(product.getCreatedAt());
         response.setUpdatedAt(product.getUpdatedAt());
         return response;
+    }
+
+    private String resolveDisplayImageUrl(ProductImageResponse coverImage, String legacyImageUrl) {
+        if (coverImage != null && coverImage.getUrl() != null && !coverImage.getUrl().isBlank()) {
+            return coverImage.getUrl();
+        }
+        if (legacyImageUrl == null || legacyImageUrl.isBlank()) {
+            return null;
+        }
+        if (legacyImageUrl.startsWith("http://") || legacyImageUrl.startsWith("https://")) {
+            return legacyImageUrl;
+        }
+        if (legacyImageUrl.startsWith("/api/catalog/media/")) {
+            return legacyImageUrl;
+        }
+        return null;
     }
 }
