@@ -15,6 +15,11 @@ data:
   CATALOG_EVENTS_TOPIC: catalog.events
   SERVER_PORT: "8443"
   SERVER_SSL_ENABLED: "true"
+  CATALOG_MEDIA_ROOT: /opt/catalog/media
+  CATALOG_MEDIA_MAX_FILE_SIZE: "5242880"
+  CATALOG_MEDIA_ALLOWED_MIME_TYPES: image/jpeg,image/png,image/webp,image/gif
+  CATALOG_MEDIA_MAX_MULTIPART_SIZE: 6MB
+  CATALOG_MEDIA_MAX_MULTIPART_REQUEST_SIZE: 30MB
 ---
 apiVersion: v1
 kind: Secret
@@ -85,6 +90,8 @@ spec:
             - name: service-tls
               mountPath: /etc/tls
               readOnly: true
+            - name: media-storage
+              mountPath: /opt/catalog/media
       volumes:
         - name: truststore
           secret:
@@ -95,6 +102,9 @@ spec:
         - name: service-tls
           secret:
             secretName: catalog-service-tls
+        - name: media-storage
+          persistentVolumeClaim:
+            claimName: catalog-service-media
 ---
 apiVersion: v1
 kind: Service
@@ -123,3 +133,15 @@ spec:
   tls:
     termination: reencrypt
     insecureEdgeTerminationPolicy: Redirect
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: catalog-service-media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

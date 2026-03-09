@@ -3,6 +3,7 @@ package com.newproject.catalog.service;
 import com.newproject.catalog.domain.Category;
 import com.newproject.catalog.domain.Manufacturer;
 import com.newproject.catalog.domain.Product;
+import com.newproject.catalog.dto.ProductImageResponse;
 import com.newproject.catalog.dto.ProductRequest;
 import com.newproject.catalog.dto.ProductResponse;
 import com.newproject.catalog.events.CatalogEventPublisher;
@@ -28,17 +29,20 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final ManufacturerRepository manufacturerRepository;
     private final CatalogEventPublisher eventPublisher;
+    private final ProductImageService productImageService;
 
     public ProductService(
         ProductRepository productRepository,
         CategoryRepository categoryRepository,
         ManufacturerRepository manufacturerRepository,
-        CatalogEventPublisher eventPublisher
+        CatalogEventPublisher eventPublisher,
+        ProductImageService productImageService
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.manufacturerRepository = manufacturerRepository;
         this.eventPublisher = eventPublisher;
+        this.productImageService = productImageService;
     }
 
     @Transactional
@@ -54,8 +58,9 @@ public class ProductService {
         product.setUpdatedAt(now);
 
         Product saved = productRepository.save(product);
-        eventPublisher.publish("PRODUCT_CREATED", "product", saved.getId().toString(), toResponse(saved));
-        return toResponse(saved);
+        ProductResponse response = toResponse(saved);
+        eventPublisher.publish("PRODUCT_CREATED", "product", saved.getId().toString(), response);
+        return response;
     }
 
     @Transactional
@@ -75,8 +80,9 @@ public class ProductService {
         product.setUpdatedAt(OffsetDateTime.now());
 
         Product saved = productRepository.save(product);
-        eventPublisher.publish("PRODUCT_UPDATED", "product", saved.getId().toString(), toResponse(saved));
-        return toResponse(saved);
+        ProductResponse response = toResponse(saved);
+        eventPublisher.publish("PRODUCT_UPDATED", "product", saved.getId().toString(), response);
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -143,6 +149,8 @@ public class ProductService {
     public void delete(Long id) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Product not found"));
+
+        productImageService.cleanupAllProductMedia(product);
         productRepository.delete(product);
         eventPublisher.publish("PRODUCT_DELETED", "product", id.toString(), null);
     }
@@ -178,7 +186,10 @@ public class ProductService {
         product.setPrice(request.getPrice());
         product.setQuantity(request.getQuantity());
         product.setActive(request.getActive());
-        product.setImage(request.getImage());
+
+        if (request.getImage() != null) {
+            product.setImage(request.getImage());
+        }
 
         if (request.getManufacturerId() != null) {
             Manufacturer manufacturer = manufacturerRepository.findById(request.getManufacturerId())
@@ -198,6 +209,8 @@ public class ProductService {
     }
 
     private ProductResponse toResponse(Product product) {
+        ProductImageResponse coverImage = productImageService.resolveCoverImage(product.getId());
+
         ProductResponse response = new ProductResponse();
         response.setId(product.getId());
         response.setSku(product.getSku());
@@ -207,7 +220,12 @@ public class ProductService {
         response.setPrice(product.getPrice());
         response.setQuantity(product.getQuantity());
         response.setActive(product.getActive());
-        response.setImage(product.getImage());
+
+        String coverUrl = coverImage != null ? coverImage.getUrl() : product.getImage();
+        response.setImage(coverUrl);
+        response.setCoverImageUrl(coverUrl);
+        response.setGalleryImages(productImageService.resolveGalleryImages(product.getId()));
+
         response.setManufacturerId(product.getManufacturer() != null ? product.getManufacturer().getId() : null);
         response.setCategoryIds(product.getCategories().stream().map(Category::getId).collect(Collectors.toSet()));
         response.setCreatedAt(product.getCreatedAt());

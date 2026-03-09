@@ -2,6 +2,7 @@ package com.newproject.catalog.dto;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Set;
 
 public class ProductResponse {
@@ -14,6 +15,8 @@ public class ProductResponse {
     private Integer quantity;
     private Boolean active;
     private String image;
+    private String coverImageUrl;
+    private List<ProductImageResponse> galleryImages;
     private Long manufacturerId;
     private Set<Long> categoryIds;
     private OffsetDateTime createdAt;
@@ -89,6 +92,22 @@ public class ProductResponse {
 
     public void setImage(String image) {
         this.image = image;
+    }
+
+    public String getCoverImageUrl() {
+        return coverImageUrl;
+    }
+
+    public void setCoverImageUrl(String coverImageUrl) {
+        this.coverImageUrl = coverImageUrl;
+    }
+
+    public List<ProductImageResponse> getGalleryImages() {
+        return galleryImages;
+    }
+
+    public void setGalleryImages(List<ProductImageResponse> galleryImages) {
+        this.galleryImages = galleryImages;
     }
 
     public Long getManufacturerId() {

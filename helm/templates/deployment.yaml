@@ -116,6 +116,10 @@ spec:
               mountPath: /etc/tls
               readOnly: true
 {{- end }}
+{{- if .Values.media.persistence.enabled }}
+            - name: media-storage
+              mountPath: {{ .Values.env.CATALOG_MEDIA_ROOT | default "/opt/catalog/media" }}
+{{- end }}
       volumes:
 {{- if .Values.truststore.enabled }}
         - name: truststore
@@ -126,4 +130,9 @@ spec:
         - name: service-tls
           secret:
             secretName: {{ .Values.tls.secretName }}
+{{- end }}
+{{- if .Values.media.persistence.enabled }}
+        - name: media-storage
+          persistentVolumeClaim:
+            claimName: {{ include "app.fullname" . }}-media
 {{- end }}

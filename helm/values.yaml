@@ -22,6 +22,11 @@ env:
   KEYCLOAK_ISSUER_URI: "https://keycloak-platform.apps-crc.testing/realms/master"
   KAFKA_BOOTSTRAP_SERVERS: "kafka.platform.svc.cluster.local:9092"
   KAFKA_SECURITY_PROTOCOL: "PLAINTEXT"
+  CATALOG_MEDIA_ROOT: "/opt/catalog/media"
+  CATALOG_MEDIA_MAX_FILE_SIZE: "5242880"
+  CATALOG_MEDIA_ALLOWED_MIME_TYPES: "image/jpeg,image/png,image/webp,image/gif"
+  CATALOG_MEDIA_MAX_MULTIPART_SIZE: "6MB"
+  CATALOG_MEDIA_MAX_MULTIPART_REQUEST_SIZE: "30MB"
 
 secret:
   name: "catalog-service-secret"
@@ -40,6 +45,15 @@ secretEnv:
 tls:
   enabled: true
   secretName: "wildcard-apps-tls"
+
+
+media:
+  persistence:
+    enabled: true
+    size: 2Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
 
 truststore:
   enabled: true
