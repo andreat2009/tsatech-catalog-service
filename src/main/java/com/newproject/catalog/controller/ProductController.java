@@ -2,10 +2,12 @@ package com.newproject.catalog.controller;
 
 import com.newproject.catalog.dto.ProductRequest;
 import com.newproject.catalog.dto.ProductResponse;
+import com.newproject.catalog.service.LanguageSupport;
 import com.newproject.catalog.service.ProductService;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,14 +27,22 @@ public class ProductController {
         @RequestParam(required = false) Boolean active,
         @RequestParam(required = false) BigDecimal minPrice,
         @RequestParam(required = false) BigDecimal maxPrice,
-        @RequestParam(required = false) String sort
+        @RequestParam(required = false) String sort,
+        @RequestParam(required = false) String lang,
+        @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String acceptLanguage
     ) {
-        return productService.list(q, categoryId, active, minPrice, maxPrice, sort);
+        String resolvedLanguage = LanguageSupport.resolveLanguage(lang, acceptLanguage);
+        return productService.list(q, categoryId, active, minPrice, maxPrice, sort, resolvedLanguage);
     }
 
     @GetMapping("/{id}")
-    public ProductResponse get(@PathVariable Long id) {
-        return productService.get(id);
+    public ProductResponse get(
+        @PathVariable Long id,
+        @RequestParam(required = false) String lang,
+        @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String acceptLanguage
+    ) {
+        String resolvedLanguage = LanguageSupport.resolveLanguage(lang, acceptLanguage);
+        return productService.get(id, resolvedLanguage);
     }
 
     @PostMapping

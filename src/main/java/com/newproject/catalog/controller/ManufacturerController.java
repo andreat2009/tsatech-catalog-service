@@ -2,9 +2,11 @@ package com.newproject.catalog.controller;
 
 import com.newproject.catalog.dto.ManufacturerRequest;
 import com.newproject.catalog.dto.ManufacturerResponse;
+import com.newproject.catalog.service.LanguageSupport;
 import com.newproject.catalog.service.ManufacturerService;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,13 +20,22 @@ public class ManufacturerController {
     }
 
     @GetMapping
-    public List<ManufacturerResponse> list() {
-        return manufacturerService.list();
+    public List<ManufacturerResponse> list(
+        @RequestParam(required = false) String lang,
+        @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String acceptLanguage
+    ) {
+        String resolvedLanguage = LanguageSupport.resolveLanguage(lang, acceptLanguage);
+        return manufacturerService.list(resolvedLanguage);
     }
 
     @GetMapping("/{id}")
-    public ManufacturerResponse get(@PathVariable Long id) {
-        return manufacturerService.get(id);
+    public ManufacturerResponse get(
+        @PathVariable Long id,
+        @RequestParam(required = false) String lang,
+        @RequestHeader(value = HttpHeaders.ACCEPT_LANGUAGE, required = false) String acceptLanguage
+    ) {
+        String resolvedLanguage = LanguageSupport.resolveLanguage(lang, acceptLanguage);
+        return manufacturerService.get(id, resolvedLanguage);
     }
 
     @PostMapping

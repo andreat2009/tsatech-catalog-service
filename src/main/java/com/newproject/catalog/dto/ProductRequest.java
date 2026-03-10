@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 public class ProductRequest {
@@ -30,6 +32,7 @@ public class ProductRequest {
     private Long manufacturerId;
 
     private Set<Long> categoryIds;
+    private Map<String, LocalizedContent> translations = new LinkedHashMap<>();
 
     public String getSku() {
         return sku;
@@ -109,5 +112,13 @@ public class ProductRequest {
 
     public void setCategoryIds(Set<Long> categoryIds) {
         this.categoryIds = categoryIds;
+    }
+
+    public Map<String, LocalizedContent> getTranslations() {
+        return translations;
+    }
+
+    public void setTranslations(Map<String, LocalizedContent> translations) {
+        this.translations = translations;
     }
 }

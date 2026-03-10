@@ -1,5 +1,8 @@
 package com.newproject.catalog.dto;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public class CategoryResponse {
     private Long id;
     private Long parentId;
@@ -7,6 +10,7 @@ public class CategoryResponse {
     private String description;
     private Boolean active;
     private Integer sortOrder;
+    private Map<String, LocalizedContent> translations = new LinkedHashMap<>();
 
     public Long getId() {
         return id;
@@ -54,5 +58,13 @@ public class CategoryResponse {
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public Map<String, LocalizedContent> getTranslations() {
+        return translations;
+    }
+
+    public void setTranslations(Map<String, LocalizedContent> translations) {
+        this.translations = translations;
     }
 }

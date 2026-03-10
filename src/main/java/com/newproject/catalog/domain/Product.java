@@ -54,6 +54,10 @@ public class Product {
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ProductImage> images = new ArrayList<>();
 
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProductTranslation> translations = new ArrayList<>();
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -170,5 +174,13 @@ public class Product {
 
     public void setImages(List<ProductImage> images) {
         this.images = images;
+    }
+
+    public List<ProductTranslation> getTranslations() {
+        return translations;
+    }
+
+    public void setTranslations(List<ProductTranslation> translations) {
+        this.translations = translations;
     }
 }

@@ -1,6 +1,8 @@
 package com.newproject.catalog.domain;
 
 import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "catalog_manufacturer")
@@ -17,6 +19,10 @@ public class Manufacturer {
 
     @Column(nullable = false)
     private Boolean active;
+
+
+    @OneToMany(mappedBy = "manufacturer", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ManufacturerTranslation> translations = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -48,5 +54,14 @@ public class Manufacturer {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+
+    public List<ManufacturerTranslation> getTranslations() {
+        return translations;
+    }
+
+    public void setTranslations(List<ManufacturerTranslation> translations) {
+        this.translations = translations;
     }
 }

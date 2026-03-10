@@ -1,6 +1,8 @@
 package com.newproject.catalog.domain;
 
 import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "catalog_category")
@@ -24,6 +26,10 @@ public class Category {
 
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
+
+
+    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CategoryTranslation> translations = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -71,5 +77,14 @@ public class Category {
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+
+    public List<CategoryTranslation> getTranslations() {
+        return translations;
+    }
+
+    public void setTranslations(List<CategoryTranslation> translations) {
+        this.translations = translations;
     }
 }

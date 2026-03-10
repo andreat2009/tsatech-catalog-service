@@ -3,6 +3,8 @@ package com.newproject.catalog.service;
 import com.newproject.catalog.domain.Category;
 import com.newproject.catalog.domain.Manufacturer;
 import com.newproject.catalog.domain.Product;
+import com.newproject.catalog.domain.ProductTranslation;
+import com.newproject.catalog.dto.LocalizedContent;
 import com.newproject.catalog.dto.ProductImageResponse;
 import com.newproject.catalog.dto.ProductRequest;
 import com.newproject.catalog.dto.ProductResponse;
@@ -16,8 +18,10 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -58,7 +62,7 @@ public class ProductService {
         product.setUpdatedAt(now);
 
         Product saved = productRepository.save(product);
-        ProductResponse response = toResponse(saved);
+        ProductResponse response = toResponse(saved, LanguageSupport.DEFAULT_LANGUAGE);
         eventPublisher.publish("PRODUCT_CREATED", "product", saved.getId().toString(), response);
         return response;
     }
@@ -80,21 +84,21 @@ public class ProductService {
         product.setUpdatedAt(OffsetDateTime.now());
 
         Product saved = productRepository.save(product);
-        ProductResponse response = toResponse(saved);
+        ProductResponse response = toResponse(saved, LanguageSupport.DEFAULT_LANGUAGE);
         eventPublisher.publish("PRODUCT_UPDATED", "product", saved.getId().toString(), response);
         return response;
     }
 
     @Transactional(readOnly = true)
-    public ProductResponse get(Long id) {
+    public ProductResponse get(Long id, String language) {
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new NotFoundException("Product not found"));
-        return toResponse(product);
+        return toResponse(product, language);
     }
 
     @Transactional(readOnly = true)
     public List<ProductResponse> list() {
-        return list(null, null, null, null, null, null);
+        return list(null, null, null, null, null, null, LanguageSupport.DEFAULT_LANGUAGE);
     }
 
     @Transactional(readOnly = true)
@@ -104,19 +108,27 @@ public class ProductService {
         Boolean active,
         BigDecimal minPrice,
         BigDecimal maxPrice,
-        String sort
+        String sort,
+        String language
     ) {
+        String requestedLanguage = LanguageSupport.normalizeLanguage(language);
+        final String resolvedLanguage = requestedLanguage != null ? requestedLanguage : LanguageSupport.DEFAULT_LANGUAGE;
+
         List<Product> products = active != null
             ? productRepository.findByActive(active)
             : productRepository.findAll();
 
         String normalizedQuery = query != null ? query.trim().toLowerCase(Locale.ROOT) : null;
         if (normalizedQuery != null && !normalizedQuery.isEmpty()) {
+            String queryValue = normalizedQuery;
             products = products.stream()
-                .filter(product -> contains(product.getSku(), normalizedQuery)
-                    || contains(product.getModel(), normalizedQuery)
-                    || contains(product.getName(), normalizedQuery)
-                    || contains(product.getDescription(), normalizedQuery))
+                .filter(product -> {
+                    LocalizedContent localized = resolveLocalizedContent(product.getTranslations(), resolvedLanguage, product.getName(), product.getDescription());
+                    return contains(product.getSku(), queryValue)
+                        || contains(product.getModel(), queryValue)
+                        || contains(localized.getName(), queryValue)
+                        || contains(localized.getDescription(), queryValue);
+                })
                 .collect(Collectors.toList());
         }
 
@@ -138,10 +150,11 @@ public class ProductService {
                 .collect(Collectors.toList());
         }
 
-        products.sort(resolveComparator(sort));
+        products.sort(resolveComparator(sort, resolvedLanguage));
 
+        String finalResolvedLanguage = resolvedLanguage;
         return products.stream()
-            .map(this::toResponse)
+            .map(product -> toResponse(product, finalResolvedLanguage))
             .collect(Collectors.toList());
     }
 
@@ -155,11 +168,11 @@ public class ProductService {
         eventPublisher.publish("PRODUCT_DELETED", "product", id.toString(), null);
     }
 
-    private Comparator<Product> resolveComparator(String sort) {
+    private Comparator<Product> resolveComparator(String sort, String language) {
         String normalizedSort = sort != null ? sort.toLowerCase(Locale.ROOT) : "";
 
         return switch (normalizedSort) {
-            case "name_desc" -> Comparator.comparing(Product::getName, String.CASE_INSENSITIVE_ORDER)
+            case "name_desc" -> Comparator.comparing((Product product) -> resolveLocalizedName(product, language), String.CASE_INSENSITIVE_ORDER)
                 .reversed()
                 .thenComparing(Product::getId);
             case "price_asc" -> Comparator.comparing(Product::getPrice, Comparator.nullsLast(BigDecimal::compareTo))
@@ -168,10 +181,18 @@ public class ProductService {
                 .reversed()
                 .thenComparing(Product::getId);
             case "newest" -> Comparator.comparing(Product::getId, Comparator.nullsLast(Long::compareTo)).reversed();
-            case "name_asc" -> Comparator.comparing(Product::getName, String.CASE_INSENSITIVE_ORDER)
+            case "name_asc" -> Comparator.comparing((Product product) -> resolveLocalizedName(product, language), String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(Product::getId);
             default -> Comparator.comparing(Product::getId, Comparator.nullsLast(Long::compareTo));
         };
+    }
+
+    private String resolveLocalizedName(Product product, String language) {
+        LocalizedContent localized = resolveLocalizedContent(product.getTranslations(), language, product.getName(), product.getDescription());
+        if (localized.getName() != null) {
+            return localized.getName();
+        }
+        return "";
     }
 
     private boolean contains(String value, String query) {
@@ -181,8 +202,21 @@ public class ProductService {
     private void applyRequest(Product product, ProductRequest request) {
         product.setSku(request.getSku());
         product.setModel(request.getModel());
-        product.setName(request.getName());
-        product.setDescription(request.getDescription());
+
+        Map<String, LocalizedContent> normalizedTranslations = normalizeLocalizedContent(
+            request.getTranslations(),
+            request.getName(),
+            request.getDescription(),
+            product.getName(),
+            product.getDescription(),
+            "Product name is required"
+        );
+
+        LocalizedContent defaultContent = normalizedTranslations.get(LanguageSupport.DEFAULT_LANGUAGE);
+        product.setName(defaultContent.getName());
+        product.setDescription(defaultContent.getDescription());
+        syncTranslations(product, normalizedTranslations);
+
         product.setPrice(request.getPrice());
         product.setQuantity(request.getQuantity());
         product.setActive(request.getActive());
@@ -208,15 +242,43 @@ public class ProductService {
         }
     }
 
-    private ProductResponse toResponse(Product product) {
+    private void syncTranslations(Product product, Map<String, LocalizedContent> localizedContents) {
+        Map<String, ProductTranslation> existingByLanguage = product.getTranslations().stream()
+            .collect(Collectors.toMap(
+                translation -> translation.getLanguageCode().toLowerCase(Locale.ROOT),
+                translation -> translation,
+                (first, ignored) -> first
+            ));
+
+        for (String language : LanguageSupport.SUPPORTED_LANGUAGES) {
+            LocalizedContent localizedContent = localizedContents.get(language);
+            ProductTranslation translation = existingByLanguage.get(language);
+            if (translation == null) {
+                translation = new ProductTranslation();
+                translation.setProduct(product);
+                translation.setLanguageCode(language);
+                product.getTranslations().add(translation);
+                existingByLanguage.put(language, translation);
+            }
+            translation.setName(localizedContent.getName());
+            translation.setDescription(localizedContent.getDescription());
+        }
+
+        product.getTranslations().removeIf(translation ->
+            !LanguageSupport.SUPPORTED_LANGUAGES.contains(translation.getLanguageCode().toLowerCase(Locale.ROOT)));
+    }
+
+    private ProductResponse toResponse(Product product, String language) {
         ProductImageResponse coverImage = productImageService.resolveCoverImage(product.getId());
+
+        LocalizedContent localized = resolveLocalizedContent(product.getTranslations(), language, product.getName(), product.getDescription());
 
         ProductResponse response = new ProductResponse();
         response.setId(product.getId());
         response.setSku(product.getSku());
         response.setModel(product.getModel());
-        response.setName(product.getName());
-        response.setDescription(product.getDescription());
+        response.setName(localized.getName());
+        response.setDescription(localized.getDescription());
         response.setPrice(product.getPrice());
         response.setQuantity(product.getQuantity());
         response.setActive(product.getActive());
@@ -230,6 +292,7 @@ public class ProductService {
         response.setCategoryIds(product.getCategories().stream().map(Category::getId).collect(Collectors.toSet()));
         response.setCreatedAt(product.getCreatedAt());
         response.setUpdatedAt(product.getUpdatedAt());
+        response.setTranslations(toLocalizedContentMap(product.getTranslations(), product.getName(), product.getDescription()));
         return response;
     }
 
@@ -247,5 +310,130 @@ public class ProductService {
             return legacyImageUrl;
         }
         return null;
+    }
+
+    private Map<String, LocalizedContent> toLocalizedContentMap(List<ProductTranslation> translations, String fallbackName, String fallbackDescription) {
+        Map<String, LocalizedContent> map = new LinkedHashMap<>();
+        Map<String, ProductTranslation> byLanguage = translations.stream()
+            .collect(Collectors.toMap(
+                translation -> translation.getLanguageCode().toLowerCase(Locale.ROOT),
+                translation -> translation,
+                (first, ignored) -> first
+            ));
+
+        for (String language : LanguageSupport.SUPPORTED_LANGUAGES) {
+            ProductTranslation translation = byLanguage.get(language);
+            LocalizedContent content = new LocalizedContent();
+            content.setName(firstNonBlank(
+                translation != null ? translation.getName() : null,
+                language.equals(LanguageSupport.DEFAULT_LANGUAGE) ? fallbackName : null,
+                fallbackName
+            ));
+            content.setDescription(firstNonBlank(
+                translation != null ? translation.getDescription() : null,
+                language.equals(LanguageSupport.DEFAULT_LANGUAGE) ? fallbackDescription : null,
+                fallbackDescription
+            ));
+            map.put(language, content);
+        }
+        return map;
+    }
+
+    private LocalizedContent resolveLocalizedContent(
+        List<ProductTranslation> translations,
+        String language,
+        String fallbackName,
+        String fallbackDescription
+    ) {
+        String resolvedLanguage = LanguageSupport.normalizeLanguage(language);
+        if (resolvedLanguage == null) {
+            resolvedLanguage = LanguageSupport.DEFAULT_LANGUAGE;
+        }
+
+        Map<String, LocalizedContent> map = toLocalizedContentMap(translations, fallbackName, fallbackDescription);
+        LocalizedContent localized = map.get(resolvedLanguage);
+        if (localized == null) {
+            localized = map.get(LanguageSupport.DEFAULT_LANGUAGE);
+        }
+        if (localized == null) {
+            localized = new LocalizedContent();
+            localized.setName(fallbackName);
+            localized.setDescription(fallbackDescription);
+        }
+        return localized;
+    }
+
+    private Map<String, LocalizedContent> normalizeLocalizedContent(
+        Map<String, LocalizedContent> requested,
+        String fallbackName,
+        String fallbackDescription,
+        String existingName,
+        String existingDescription,
+        String requiredNameMessage
+    ) {
+        Map<String, LocalizedContent> normalized = new LinkedHashMap<>();
+
+        String defaultName = firstNonBlank(
+            extractValue(requested, LanguageSupport.DEFAULT_LANGUAGE, true),
+            fallbackName,
+            existingName
+        );
+        String defaultDescription = firstNonBlank(
+            extractValue(requested, LanguageSupport.DEFAULT_LANGUAGE, false),
+            fallbackDescription,
+            existingDescription
+        );
+
+        if (defaultName == null || defaultName.isBlank()) {
+            throw new BadRequestException(requiredNameMessage);
+        }
+
+        for (String language : LanguageSupport.SUPPORTED_LANGUAGES) {
+            LocalizedContent content = new LocalizedContent();
+            String name = firstNonBlank(
+                extractValue(requested, language, true),
+                language.equals(LanguageSupport.DEFAULT_LANGUAGE) ? fallbackName : null,
+                defaultName
+            );
+            String description = firstNonBlank(
+                extractValue(requested, language, false),
+                language.equals(LanguageSupport.DEFAULT_LANGUAGE) ? fallbackDescription : null,
+                defaultDescription
+            );
+            content.setName(name != null ? name : defaultName);
+            content.setDescription(description);
+            normalized.put(language, content);
+        }
+
+        return normalized;
+    }
+
+    private String extractValue(Map<String, LocalizedContent> requested, String language, boolean nameField) {
+        if (requested == null) {
+            return null;
+        }
+        LocalizedContent content = requested.get(language);
+        if (content == null) {
+            return null;
+        }
+        return trimToNull(nameField ? content.getName() : content.getDescription());
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            String trimmed = trimToNull(value);
+            if (trimmed != null) {
+                return trimmed;
+            }
+        }
+        return null;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -1,7 +1,9 @@
 package com.newproject.catalog.dto;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class CategoryTreeResponse {
     private Long id;
@@ -9,6 +11,7 @@ public class CategoryTreeResponse {
     private String description;
     private Integer sortOrder;
     private List<CategoryTreeResponse> children = new ArrayList<>();
+    private Map<String, LocalizedContent> translations = new LinkedHashMap<>();
 
     public Long getId() {
         return id;
@@ -48,5 +51,13 @@ public class CategoryTreeResponse {
 
     public void setChildren(List<CategoryTreeResponse> children) {
         this.children = children;
+    }
+
+    public Map<String, LocalizedContent> getTranslations() {
+        return translations;
+    }
+
+    public void setTranslations(Map<String, LocalizedContent> translations) {
+        this.translations = translations;
     }
 }
