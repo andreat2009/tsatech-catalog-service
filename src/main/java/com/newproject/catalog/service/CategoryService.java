@@ -2,6 +2,8 @@ package com.newproject.catalog.service;
 
 import com.newproject.catalog.domain.Category;
 import com.newproject.catalog.domain.CategoryTranslation;
+import com.newproject.catalog.dto.CategoryAutoTranslateRequest;
+import com.newproject.catalog.dto.CategoryAutoTranslateResponse;
 import com.newproject.catalog.dto.CategoryRequest;
 import com.newproject.catalog.dto.CategoryResponse;
 import com.newproject.catalog.dto.CategoryTreeResponse;
@@ -10,12 +12,16 @@ import com.newproject.catalog.events.CatalogEventPublisher;
 import com.newproject.catalog.exception.BadRequestException;
 import com.newproject.catalog.exception.NotFoundException;
 import com.newproject.catalog.repository.CategoryRepository;
+import com.newproject.catalog.service.translation.TranslationResult;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +30,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class CategoryService {
     private final CategoryRepository categoryRepository;
     private final CatalogEventPublisher eventPublisher;
+    private final CatalogTranslationService catalogTranslationService;
 
-    public CategoryService(CategoryRepository categoryRepository, CatalogEventPublisher eventPublisher) {
+    public CategoryService(
+        CategoryRepository categoryRepository,
+        CatalogEventPublisher eventPublisher,
+        CatalogTranslationService catalogTranslationService
+    ) {
         this.categoryRepository = categoryRepository;
         this.eventPublisher = eventPublisher;
+        this.catalogTranslationService = catalogTranslationService;
     }
 
     @Transactional
@@ -135,6 +147,88 @@ public class CategoryService {
             .orElseThrow(() -> new NotFoundException("Category not found"));
         categoryRepository.delete(category);
         eventPublisher.publish("CATEGORY_DELETED", "category", id.toString(), null);
+    }
+
+    @Transactional(readOnly = true)
+    public CategoryAutoTranslateResponse autoTranslate(CategoryAutoTranslateRequest request) {
+        Map<String, LocalizedContent> normalized = normalizeTranslationPayload(
+            request != null ? request.getTranslations() : null
+        );
+
+        String sourceLanguage = LanguageSupport.normalizeLanguage(request != null ? request.getSourceLanguage() : null);
+        if (sourceLanguage == null) {
+            sourceLanguage = LanguageSupport.DEFAULT_LANGUAGE;
+        }
+
+        LocalizedContent sourceContent = normalized.get(sourceLanguage);
+        if (sourceContent == null) {
+            sourceContent = new LocalizedContent();
+            normalized.put(sourceLanguage, sourceContent);
+        }
+
+        if (trimToNull(sourceContent.getName()) == null) {
+            throw new BadRequestException("Source language category name is required");
+        }
+
+        boolean overwrite = request != null && Boolean.TRUE.equals(request.getOverwriteExisting());
+        Set<String> targets = new LinkedHashSet<>();
+        for (String language : LanguageSupport.SUPPORTED_LANGUAGES) {
+            if (language.equals(sourceLanguage)) {
+                continue;
+            }
+            LocalizedContent current = normalized.get(language);
+            if (overwrite || isBlank(current != null ? current.getName() : null) || isBlank(current != null ? current.getDescription() : null)) {
+                targets.add(language);
+            }
+        }
+
+        TranslationResult translationResult = catalogTranslationService.translateProductContent(sourceLanguage, sourceContent, targets);
+        Set<String> translatedLanguages = new LinkedHashSet<>();
+
+        if (translationResult.getTranslations() != null) {
+            for (Map.Entry<String, LocalizedContent> entry : translationResult.getTranslations().entrySet()) {
+                String language = LanguageSupport.normalizeLanguage(entry.getKey());
+                if (language == null || language.equals(sourceLanguage)) {
+                    continue;
+                }
+
+                LocalizedContent translated = entry.getValue();
+                if (translated == null) {
+                    continue;
+                }
+
+                LocalizedContent current = normalized.get(language);
+                if (current == null) {
+                    current = new LocalizedContent();
+                    normalized.put(language, current);
+                }
+
+                boolean changed = false;
+                String translatedName = trimToNull(translated.getName());
+                String translatedDescription = trimToNull(translated.getDescription());
+
+                if (translatedName != null && (overwrite || isBlank(current.getName()))) {
+                    current.setName(translatedName);
+                    changed = true;
+                }
+                if (translatedDescription != null && (overwrite || isBlank(current.getDescription()))) {
+                    current.setDescription(translatedDescription);
+                    changed = true;
+                }
+
+                if (changed) {
+                    translatedLanguages.add(language);
+                }
+            }
+        }
+
+        CategoryAutoTranslateResponse response = new CategoryAutoTranslateResponse();
+        response.setTranslations(normalized);
+        response.setTranslatedLanguages(new ArrayList<>(translatedLanguages));
+        response.setWarnings(translationResult.getWarnings() != null
+            ? new ArrayList<>(translationResult.getWarnings())
+            : new ArrayList<>());
+        return response;
     }
 
     private void applyRequest(Category category, CategoryRequest request) {
@@ -310,6 +404,18 @@ public class CategoryService {
         return normalized;
     }
 
+    private Map<String, LocalizedContent> normalizeTranslationPayload(Map<String, LocalizedContent> requested) {
+        Map<String, LocalizedContent> normalized = new LinkedHashMap<>();
+        for (String language : LanguageSupport.SUPPORTED_LANGUAGES) {
+            LocalizedContent source = requested != null ? requested.get(language) : null;
+            LocalizedContent content = new LocalizedContent();
+            content.setName(trimToNull(source != null ? source.getName() : null));
+            content.setDescription(trimToNull(source != null ? source.getDescription() : null));
+            normalized.put(language, content);
+        }
+        return normalized;
+    }
+
     private String extractValue(Map<String, LocalizedContent> requested, String language, boolean nameField) {
         if (requested == null) {
             return null;
@@ -337,5 +443,9 @@ public class CategoryService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private boolean isBlank(String value) {
+        return trimToNull(value) == null;
     }
 }

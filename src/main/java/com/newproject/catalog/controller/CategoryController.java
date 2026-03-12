@@ -1,5 +1,7 @@
 package com.newproject.catalog.controller;
 
+import com.newproject.catalog.dto.CategoryAutoTranslateRequest;
+import com.newproject.catalog.dto.CategoryAutoTranslateResponse;
 import com.newproject.catalog.dto.CategoryRequest;
 import com.newproject.catalog.dto.CategoryResponse;
 import com.newproject.catalog.dto.CategoryTreeResponse;
@@ -59,6 +61,11 @@ public class CategoryController {
     @PutMapping("/{id}")
     public CategoryResponse update(@PathVariable Long id, @Valid @RequestBody CategoryRequest request) {
         return categoryService.update(id, request);
+    }
+
+    @PostMapping("/translate")
+    public CategoryAutoTranslateResponse autoTranslate(@RequestBody CategoryAutoTranslateRequest request) {
+        return categoryService.autoTranslate(request);
     }
 
     @DeleteMapping("/{id}")
