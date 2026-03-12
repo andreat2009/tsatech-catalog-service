@@ -1,5 +1,7 @@
 package com.newproject.catalog.controller;
 
+import com.newproject.catalog.dto.ProductAutoTranslateRequest;
+import com.newproject.catalog.dto.ProductAutoTranslateResponse;
 import com.newproject.catalog.dto.ProductRequest;
 import com.newproject.catalog.dto.ProductResponse;
 import com.newproject.catalog.service.LanguageSupport;
@@ -54,6 +56,12 @@ public class ProductController {
     @PutMapping("/{id}")
     public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         return productService.update(id, request);
+    }
+
+
+    @PostMapping("/translate")
+    public ProductAutoTranslateResponse autoTranslate(@RequestBody ProductAutoTranslateRequest request) {
+        return productService.autoTranslate(request);
     }
 
     @DeleteMapping("/{id}")
