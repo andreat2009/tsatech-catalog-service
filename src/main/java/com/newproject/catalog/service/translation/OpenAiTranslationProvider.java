@@ -5,16 +5,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.newproject.catalog.config.CatalogTranslationProperties;
 import com.newproject.catalog.dto.LocalizedContent;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,6 +29,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class OpenAiTranslationProvider implements TranslationProvider {
     private static final Logger logger = LoggerFactory.getLogger(OpenAiTranslationProvider.class);
+    private static final char[] DEFAULT_CACERTS_PASSWORD = "changeit".toCharArray();
 
     private final CatalogTranslationProperties properties;
     private final ObjectMapper objectMapper;
@@ -92,9 +100,7 @@ public class OpenAiTranslationProvider implements TranslationProvider {
         LocalizedContent sourceContent,
         Set<String> targetLanguages
     ) throws IOException, InterruptedException {
-        HttpClient client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofMillis(Math.max(1000, properties.getTimeoutMs())))
-            .build();
+        HttpClient client = buildOpenAiHttpClient();
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", model);
@@ -122,7 +128,7 @@ public class OpenAiTranslationProvider implements TranslationProvider {
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() >= 400) {
-            throw new IOException("HTTP " + response.statusCode() + " from OpenAI");
+            throw new IOException("HTTP " + response.statusCode() + " from OpenAI: " + abbreviate(trimToNull(response.body()), 240));
         }
 
         JsonNode root = objectMapper.readTree(response.body());
@@ -132,6 +138,52 @@ public class OpenAiTranslationProvider implements TranslationProvider {
             throw new IOException("Empty OpenAI content");
         }
         return trimmed;
+    }
+
+    private HttpClient buildOpenAiHttpClient() {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofMillis(Math.max(1000, properties.getTimeoutMs())));
+
+        SSLContext context = loadJvmDefaultCacertsContext();
+        if (context != null) {
+            builder.sslContext(context);
+        }
+
+        return builder.build();
+    }
+
+    private SSLContext loadJvmDefaultCacertsContext() {
+        String javaHome = trimToNull(System.getProperty("java.home"));
+        if (javaHome == null) {
+            return null;
+        }
+
+        List<Path> candidates = List.of(
+            Path.of(javaHome, "lib", "security", "cacerts"),
+            Path.of(javaHome, "jre", "lib", "security", "cacerts")
+        );
+
+        for (Path candidate : candidates) {
+            if (!Files.isRegularFile(candidate)) {
+                continue;
+            }
+            try (InputStream in = Files.newInputStream(candidate)) {
+                KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+                keyStore.load(in, DEFAULT_CACERTS_PASSWORD);
+
+                TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                trustManagerFactory.init(keyStore);
+
+                SSLContext sslContext = SSLContext.getInstance("TLS");
+                sslContext.init(null, trustManagerFactory.getTrustManagers(), new SecureRandom());
+                return sslContext;
+            } catch (Exception ex) {
+                logger.debug("Unable to load JVM cacerts from {}: {}", candidate, ex.getMessage());
+            }
+        }
+
+        logger.warn("Unable to load JVM default cacerts; OpenAI HTTPS calls will use process truststore config");
+        return null;
     }
 
     private Map<String, LocalizedContent> parseTranslations(String content, Set<String> targetLanguages) throws IOException {
@@ -213,5 +265,15 @@ public class OpenAiTranslationProvider implements TranslationProvider {
             }
         }
         return "";
+    }
+
+    private String abbreviate(String value, int maxLen) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= maxLen) {
+            return value;
+        }
+        return value.substring(0, maxLen) + "...";
     }
 }
