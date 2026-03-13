@@ -1,0 +1,1 @@
+ALTER TABLE catalog_product ADD COLUMN IF NOT EXISTS seo_keywords VARCHAR(1024);

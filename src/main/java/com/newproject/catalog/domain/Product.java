@@ -39,6 +39,9 @@ public class Product {
     @Column(length = 255)
     private String image;
 
+    @Column(name = "seo_keywords", length = 1024)
+    private String seoKeywords;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manufacturer_id")
     private Manufacturer manufacturer;
@@ -134,6 +137,14 @@ public class Product {
 
     public void setImage(String image) {
         this.image = image;
+    }
+
+    public String getSeoKeywords() {
+        return seoKeywords;
+    }
+
+    public void setSeoKeywords(String seoKeywords) {
+        this.seoKeywords = seoKeywords;
     }
 
     public Manufacturer getManufacturer() {

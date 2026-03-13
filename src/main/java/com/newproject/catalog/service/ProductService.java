@@ -314,6 +314,7 @@ public class ProductService {
         if (request.getImage() != null) {
             product.setImage(request.getImage());
         }
+        product.setSeoKeywords(trimToNull(request.getSeoKeywords()));
 
         if (request.getManufacturerId() != null) {
             Manufacturer manufacturer = manufacturerRepository.findById(request.getManufacturerId())
@@ -375,6 +376,7 @@ public class ProductService {
 
         String coverUrl = resolveDisplayImageUrl(coverImage, product.getImage());
         response.setImage(coverUrl);
+        response.setSeoKeywords(product.getSeoKeywords());
         response.setCoverImageUrl(coverUrl);
         response.setGalleryImages(productImageService.resolveGalleryImages(product.getId()));
 

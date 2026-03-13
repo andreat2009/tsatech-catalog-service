@@ -28,6 +28,7 @@ public class ProductRequest {
     private Boolean active;
 
     private String image;
+    private String seoKeywords;
 
     private Long manufacturerId;
 
@@ -96,6 +97,14 @@ public class ProductRequest {
 
     public void setImage(String image) {
         this.image = image;
+    }
+
+    public String getSeoKeywords() {
+        return seoKeywords;
+    }
+
+    public void setSeoKeywords(String seoKeywords) {
+        this.seoKeywords = seoKeywords;
     }
 
     public Long getManufacturerId() {
