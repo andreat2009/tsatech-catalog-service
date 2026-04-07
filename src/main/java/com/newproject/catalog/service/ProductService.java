@@ -4,12 +4,15 @@ import com.newproject.catalog.domain.Category;
 import com.newproject.catalog.domain.Manufacturer;
 import com.newproject.catalog.domain.Product;
 import com.newproject.catalog.domain.ProductTranslation;
+import com.newproject.catalog.domain.ProductVariant;
 import com.newproject.catalog.dto.LocalizedContent;
 import com.newproject.catalog.dto.ProductAutoTranslateRequest;
 import com.newproject.catalog.dto.ProductAutoTranslateResponse;
 import com.newproject.catalog.dto.ProductImageResponse;
 import com.newproject.catalog.dto.ProductRequest;
 import com.newproject.catalog.dto.ProductResponse;
+import com.newproject.catalog.dto.ProductVariantRequest;
+import com.newproject.catalog.dto.ProductVariantResponse;
 import com.newproject.catalog.events.CatalogEventPublisher;
 import com.newproject.catalog.exception.BadRequestException;
 import com.newproject.catalog.exception.NotFoundException;
@@ -28,12 +31,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductService {
+    private static final Pattern VARIANT_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9._-]+$");
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ManufacturerRepository manufacturerRepository;
@@ -315,6 +321,7 @@ public class ProductService {
             product.setImage(request.getImage());
         }
         product.setSeoKeywords(trimToNull(request.getSeoKeywords()));
+        syncVariants(product, request.getVariants());
 
         if (request.getManufacturerId() != null) {
             Manufacturer manufacturer = manufacturerRepository.findById(request.getManufacturerId())
@@ -401,6 +408,70 @@ public class ProductService {
         response.setCreatedAt(product.getCreatedAt());
         response.setUpdatedAt(product.getUpdatedAt());
         response.setTranslations(toLocalizedContentMap(product.getTranslations(), product.getName(), product.getDescription()));
+        response.setVariants(product.getVariants().stream()
+            .sorted(Comparator.comparing(ProductVariant::getSortOrder, Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(ProductVariant::getId, Comparator.nullsLast(Long::compareTo)))
+            .map(this::toVariantResponse)
+            .toList());
+        return response;
+    }
+
+    private void syncVariants(Product product, List<ProductVariantRequest> requests) {
+        Map<String, ProductVariant> existingByKey = product.getVariants().stream()
+            .collect(Collectors.toMap(ProductVariant::getVariantKey, Function.identity(), (first, ignored) -> first, LinkedHashMap::new));
+
+        List<ProductVariantRequest> normalizedRequests = requests != null ? requests : List.of();
+        Set<String> seenKeys = new LinkedHashSet<>();
+        List<ProductVariant> synced = new ArrayList<>();
+        int index = 0;
+
+        for (ProductVariantRequest request : normalizedRequests) {
+            if (request == null) {
+                continue;
+            }
+            String variantKey = trimToNull(request.getVariantKey());
+            String optionSummary = trimToNull(request.getOptionSummary());
+            if (variantKey == null) {
+                continue;
+            }
+            if (!VARIANT_KEY_PATTERN.matcher(variantKey).matches()) {
+                throw new BadRequestException("Invalid variant key: " + variantKey);
+            }
+            if (!seenKeys.add(variantKey)) {
+                throw new BadRequestException("Duplicate variant key: " + variantKey);
+            }
+
+            ProductVariant variant = existingByKey.getOrDefault(variantKey, new ProductVariant());
+            variant.setProduct(product);
+            variant.setVariantKey(variantKey);
+            variant.setSku(trimToNull(request.getSku()));
+            variant.setDisplayName(firstNonBlank(trimToNull(request.getDisplayName()), optionSummary, variantKey));
+            variant.setOptionSummary(optionSummary);
+            variant.setImageUrl(trimToNull(request.getImageUrl()));
+            variant.setPriceOverride(request.getPriceOverride());
+            variant.setQuantity(request.getQuantity() != null ? Math.max(0, request.getQuantity()) : 0);
+            variant.setActive(request.getActive() == null || request.getActive());
+            variant.setSortOrder(request.getSortOrder() != null ? request.getSortOrder() : index);
+            synced.add(variant);
+            index++;
+        }
+
+        product.getVariants().clear();
+        product.getVariants().addAll(synced);
+    }
+
+    private ProductVariantResponse toVariantResponse(ProductVariant variant) {
+        ProductVariantResponse response = new ProductVariantResponse();
+        response.setId(variant.getId());
+        response.setVariantKey(variant.getVariantKey());
+        response.setSku(variant.getSku());
+        response.setDisplayName(variant.getDisplayName());
+        response.setOptionSummary(variant.getOptionSummary());
+        response.setImageUrl(variant.getImageUrl());
+        response.setPriceOverride(variant.getPriceOverride());
+        response.setQuantity(variant.getQuantity());
+        response.setActive(variant.getActive());
+        response.setSortOrder(variant.getSortOrder());
         return response;
     }
 

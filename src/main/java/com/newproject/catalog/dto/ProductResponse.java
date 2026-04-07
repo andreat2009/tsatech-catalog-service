@@ -2,6 +2,7 @@ package com.newproject.catalog.dto;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,7 @@ public class ProductResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private Map<String, LocalizedContent> translations = new LinkedHashMap<>();
+    private List<ProductVariantResponse> variants = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -160,5 +162,13 @@ public class ProductResponse {
 
     public void setTranslations(Map<String, LocalizedContent> translations) {
         this.translations = translations;
+    }
+
+    public List<ProductVariantResponse> getVariants() {
+        return variants;
+    }
+
+    public void setVariants(List<ProductVariantResponse> variants) {
+        this.variants = variants;
     }
 }
